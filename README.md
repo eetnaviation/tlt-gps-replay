@@ -14,6 +14,7 @@ Go to web UI
 ```
 http://localhost:3000/
 ```
+You can click on a vehicle on the map to see more information about it.
 
 ## Supplying files
 It needs gps files in this name format: gps-year-month-day-HOUR_MINUTE_SECOND.txt
