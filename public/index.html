@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>tlt-gps-replay</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 900px; }
+    .leaflet-control-custom { background: white; border: 1px solid #ccc; padding: 5px; }
+    #controlPanel {
+      display: flex;
+      align-items: center;
+    }
+    #fileInfo {
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <a href="https://github.com/eetnaviation/tlt-gps-replay"><h1>TLT-GPS-REPLAY</h1></a>
+  <p id="intervalMessage">Playback speed: PAUSED</p>
+  <div id="map"></div>
+  <div id="controlPanel">
+    <button id="playButton">Play</button>
+    <div id="fileInfo">
+      <span id="fileName">No file</span> - <span id="fileTimestamp">N/A</span>
+    </div>
+  </div>
+  <p id="statusMessage">No files loaded</p> <!-- Status message paragraph -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+  <script>
+    const map = L.map('map').setView([59.43041, 24.75924], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let gpsData = [];
+    let markers = {};
+    let currentFileIndex = 0;
+    let intervalId;
+
+    fetch('/gps-files')
+      .then(response => response.json())
+      .then(files => {
+        gpsData = files;
+        updateProgress(); // Initial update for 0/total
+        if (gpsData.length > 0) {
+          loadGPSData(0); // Load the first file
+        }
+      });
+
+    function loadGPSData(index) {
+      if (index >= gpsData.length) return;
+
+      const file = gpsData[index];
+      document.getElementById('fileName').textContent = file.name;
+      document.getElementById('fileTimestamp').textContent = file.timestamp;
+
+      fetch(`/gps/${file.name}`)
+        .then(response => response.text())
+        .then(data => {
+          const lines = data.split('\n').slice(1); // Skip header
+          lines.forEach(line => {
+            const [type, lineNum, lon, lat, , , tak, , , destination] = line.split(',');
+            if (lon && lat) {
+              const icon = type == 2 ? 'bus.png' : (type == 1 ? 'troll.png' : 'tram.png');
+              if (!markers[tak]) {
+                markers[tak] = L.marker([lat / 1000000, lon / 1000000], { icon: L.icon({ iconUrl: icon }) })
+                  .bindPopup(`<b>Line:</b> ${lineNum}<br><b>TAK:</b> ${tak}<br><b>Destination:</b> ${destination}`)
+                  .addTo(map);
+              } else {
+                markers[tak].setLatLng([lat / 1000000, lon / 1000000]);
+              }
+            }
+          });
+
+          // Update progress message
+          updateProgress();
+        });
+    }
+
+    function updateProgress() {
+      const statusMessage = document.getElementById('statusMessage');
+      statusMessage.textContent = `${currentFileIndex + 1}/${gpsData.length} files done`;
+    }
+
+    document.getElementById('playButton').addEventListener('click', () => {
+      const playButton = document.getElementById('playButton');
+      const statusMessage = document.getElementById('statusMessage');
+      intervalInt = 31;
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+        playButton.textContent = 'Play';
+        statusMessage.textContent = ''; // Clear status message
+        intervalMessage.textContent = 'Playback speed: PAUSED';
+      } else {
+        intervalMessage.textContent = 'Playback speed: ' + intervalInt + 'ms';
+        intervalId = setInterval(() => {
+          loadGPSData(currentFileIndex);
+          
+          currentFileIndex++;
+          if (currentFileIndex >= gpsData.length) {
+            clearInterval(intervalId);
+            intervalId = null;
+            playButton.textContent = 'Play';
+            statusMessage.textContent = 'Files ended'; // Show final message
+            
+          }
+        }, intervalInt); // Adjust interval as needed
+        playButton.textContent = 'Pause';
+      }
+    });
+  </script>
+</body>
+</html>
